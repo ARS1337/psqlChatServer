@@ -10,7 +10,7 @@ app.use(cors());
 const httpServer = require("http").createServer(app);
 const options = {
   cors: {
-    origin: ["http://localhost:3000", "http://192.168.1.6:3000"],
+    origin: ["http://localhost:3000", "http://192.168.1.6:3000","*"],
   },
 };
 const io = require("socket.io")(httpServer, options);
