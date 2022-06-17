@@ -120,6 +120,10 @@ app.post(
   }
 );
 
+app.get('/',(req,res)=>{
+  res.end("hello world")
+})
+
 io.use((socket, next) => {
   const socketID = socket.handshake.auth.sessionID;
   console.log("auth: ", socket.handshake.auth);
