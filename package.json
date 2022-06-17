@@ -15,8 +15,7 @@
   },
   "devDependencies": {},
   "scripts": {
-    "start": "node index.js",
-    "build": "webpack"
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
