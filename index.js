@@ -10,7 +10,7 @@ app.use(cors());
 const httpServer = require("http").createServer(app);
 const options = {
   cors: {
-    origin: ["http://localhost:3000", "http://192.168.1.6:3000","*"],
+    origin: ["http://localhost:3000", "http://192.168.1.6:3000", "*"],
   },
 };
 const io = require("socket.io")(httpServer, options);
@@ -20,47 +20,36 @@ const {
   insertUser,
   Connect,
   doesUserExists,
-  insertGroup,
   insertMessages,
   findAndInsertGroupPrivate,
   insertMessagesPrivate,
   getUsersGroups,
-  getMessages
-} = require("./Psql");
+  getMessages,
+} = require("./Mysql");
 
 app.post(
   "/socket",
   body("name").custom(async (value, { req }) => {
     console.log(req.body, "req.body");
   }),
-  body("name", "name should atleast be of 1 character")
-    .exists()
-    .trim()
-    .isLength({ min: 1 }),
-  body(
-    "name",
-    "name can only contain alphabets and numbers, no special character"
-  ).isAlphanumeric(),
-  body("pwd", "password should be of atleast 6 chars")
-    .exists()
-    .isLength({ min: 6 }),
+  body("name", "name should atleast be of 1 character").exists().trim().isLength({ min: 1 }),
+  body("name", "name can only contain alphabets and numbers, no special character").isAlphanumeric(),
+  body("pwd", "password should be of atleast 6 chars").exists().isLength({ min: 6 }),
   body("name").custom(async (value, { req }) => {
     let result = await doesUserExists(value);
-    if (!result && req.body.process == "login") {
+    if (result.length == 0 && req.body.process == "login") {
       return Promise.reject("user name does not exist, sign up first!");
     }
     if (req.body.process == "signup") {
-      if (result ? true : false) {
-        return Promise.reject(
-          "username already exists, try again with a different user name "
-        );
+      if (result.length ? true : false) {
+        return Promise.reject("username already exists, try again with a different user name ");
       }
     }
   }),
   body("pwd").custom(async (value, { req }) => {
     if (req.body.process == "login") {
       let result = await doesUserExists(req.body.name);
-      if (result && result.pwd !== value) {
+      if (result.length && result[0].pwd !== value) {
         return Promise.reject("wrong password");
       }
     }
@@ -72,19 +61,26 @@ app.post(
       return res.status(400).json({ errors: errors.array() });
     }
     if (req.body.process == "signup") {
-      let results = await insertUser(req.body.name, req.body.pwd);
+      try {
+        console.log("sign up");
+        let results = await insertUser(req.body.name, req.body.pwd);
+      } catch (err) {
+        console.log("errrrrr");
+      } finally {
+        res.sendStatus(200);
+      }
     }
+    console.log("statrtds");
     res.sendStatus(200);
     console.log(req.body.name, "connected");
+    res.end();
+    console.log("statrtds2 22222222");
   }
 );
 
 app.post(
   "/joinGroup",
-  body("group", "group name should be atleast 1 character in length")
-    .exists()
-    .trim()
-    .isLength({ min: 1 }),
+  body("group", "group name should be atleast 1 character in length").exists().trim().isLength({ min: 1 }),
   (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -96,10 +92,7 @@ app.post(
 );
 app.post(
   "/privateChat",
-  body("connectTo", "username should be atleast 1 character in length")
-    .exists()
-    .trim()
-    .isLength({ min: 1 }),
+  body("connectTo", "username should be atleast 1 character in length").exists().trim().isLength({ min: 1 }),
   body("connectTo").custom(async (value, { req }) => {
     let userExists = await doesUserExists(value);
     if (!userExists) {
@@ -112,17 +105,14 @@ app.post(
       return res.status(400).json({ errors: errors.array() });
     }
     console.log(req.body);
-    let groupName = await findAndInsertGroupPrivate(
-      req.body.connectTo,
-      req.body.currUser
-    );
+    let groupName = await findAndInsertGroupPrivate(req.body.connectTo, req.body.currUser);
     res.end(JSON.stringify({ groupName: groupName }));
   }
 );
 
-app.get('/',(req,res)=>{
-  res.end("hello world")
-})
+app.get("/", (req, res) => {
+  res.end("hello world");
+});
 
 io.use((socket, next) => {
   const socketID = socket.handshake.auth.sessionID;
@@ -142,10 +132,15 @@ io.on("connection", (socket) => {
     console.log("join called", data);
     socket.leave(data.currGroup);
     socket.join(data.joinWithGroup);
-    let results = await insertGroup(data.joinWithGroup);
-    let res1 = await updateUser(data.user, data.joinWithGroup);
+    // let results = await insertGroup(data.joinWithGroup);
+    try {
+      let res1 = await updateUser(data.user, data.joinWithGroup);
+    } catch (err) {
+      console.log(err);
+    }
+
     io.emit("joinMessage", {
-      userName: "messageBot",
+      user: "messageBot",
       message: `${data.user} has joined group ${data.joinWithGroup} !`,
     });
   });
@@ -156,17 +151,14 @@ io.on("connection", (socket) => {
 
   socket.on("chat", async (chat) => {
     io.to(chat.currGroup).emit("chat", {
-      userName: chat.userName,
+      user: chat.user,
       message: chat.message,
     });
     let results = await insertMessages(chat.currGroup, {
-      userName:chat.userName,
-      message:chat.message
+      userName: chat.user,
+      message: chat.message,
     });
-    console.log(
-      "message: ",
-      `${chat.userName}:${chat.message}:${chat.currGroup}`
-    );
+    console.log("message: ", `${chat.user}:${chat.message}:${chat.currGroup}`);
   });
 
   socket.on("getUsersGroups", async ({ user }) => {
@@ -174,8 +166,8 @@ io.on("connection", (socket) => {
     socket.emit("getUsersGroups", res);
   });
 
-  socket.on("getMoreMessages", async ({ groupName,numberOfMessages }) => {
-    let res = await getMessages(groupName,numberOfMessages);
+  socket.on("getMoreMessages", async ({ groupName, numberOfMessages }) => {
+    let res = await getMessages(groupName, numberOfMessages);
     socket.emit("getMoreMessages", res);
   });
 
@@ -184,8 +176,7 @@ io.on("connection", (socket) => {
   });
 });
 
-
-const tryConnect= async () => {
+const tryConnect = async () => {
   let res = await Connect();
   console.log("Connected to server successfully!");
 
